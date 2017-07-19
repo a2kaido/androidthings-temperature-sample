@@ -1,12 +1,27 @@
 package jp.a2kaido.sample
 
 import android.app.Activity
+import android.content.Context
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
+import android.hardware.SensorManager.DynamicSensorCallback
 import android.os.Bundle
-import com.google.android.things.contrib.driver.bmx280.Bmx280
+import android.util.Log
+import com.google.android.things.contrib.driver.bmx280.Bmx280SensorDriver
 import com.google.android.things.contrib.driver.ht16k33.AlphanumericDisplay
 import com.google.android.things.contrib.driver.ht16k33.Ht16k33
 import com.google.android.things.contrib.driver.rainbowhat.RainbowHat
 import com.google.android.things.pio.Gpio
+
+
+
+
+
+
+
+
 
 
 /**
@@ -29,7 +44,7 @@ import com.google.android.things.pio.Gpio
  * @see <a href="https://github.com/androidthings/contrib-drivers#readme">https://github.com/androidthings/contrib-drivers#readme</a>
  *
  */
-class MainActivity : Activity() {
+class MainActivity : Activity(), SensorEventListener {
     private val TAG = "HomeActivity"
 
     val ledRed: Gpio by lazy {
@@ -44,12 +59,16 @@ class MainActivity : Activity() {
         RainbowHat.openLedGreen()
     }
 
-    val sensor: Bmx280 by lazy {
-        RainbowHat.openSensor()
+    val sensorDriver: Bmx280SensorDriver by lazy {
+        RainbowHat.createSensorDriver()
     }
 
     val segment: AlphanumericDisplay by lazy {
         RainbowHat.openDisplay()
+    }
+
+    val sensorManager: SensorManager by lazy {
+        getSystemService(Context.SENSOR_SERVICE) as SensorManager
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -59,15 +78,25 @@ class MainActivity : Activity() {
         ledBlue.value = false
         ledGreen.value = false
 
+        sensorManager.registerDynamicSensorCallback(object : DynamicSensorCallback() {
+            override fun onDynamicSensorConnected(sensor: Sensor) {
+                if (sensor.type == Sensor.TYPE_AMBIENT_TEMPERATURE) {
+                    Log.i(TAG, "Temperature sensor connected")
+                    sensorManager.registerListener(this@MainActivity,
+                            sensor, SensorManager.SENSOR_DELAY_NORMAL)
+                }
+            }
+        })
+        sensorDriver.registerTemperatureSensor()
+
         val button = RainbowHat.openButtonA()
         button.setOnButtonEventListener { button, pressed ->
 
             if (pressed) {
                 ledRed.value = true
 
-                sensor.setTemperatureOversampling(Bmx280.OVERSAMPLING_1X)
                 segment.setBrightness(Ht16k33.HT16K33_BRIGHTNESS_MAX)
-                segment.display(sensor.readTemperature().toDouble())
+                segment.display("HOGE")
                 segment.setEnabled(true)
 
             } else {
@@ -75,5 +104,25 @@ class MainActivity : Activity() {
                 segment.setEnabled(false)
             }
         }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+
+        segment.close()
+        sensorDriver.close()
+        ledRed.close()
+        ledGreen.close()
+        ledBlue.close()
+    }
+
+    override fun onSensorChanged(event: SensorEvent?) {
+        event?.values?.getOrNull(0)?.let {
+            segment.display(it.toDouble())
+        }
+    }
+
+    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
+        Log.i(TAG, "sensor accuracy changed: " + accuracy);
     }
 }
